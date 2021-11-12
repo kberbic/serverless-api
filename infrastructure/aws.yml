@@ -1,0 +1,249 @@
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: serverless-vpc
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: Internet Gateway
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs "" ]
+      CidrBlock: 10.0.1.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: Master Subnet (AZ1)
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs "" ]
+      CidrBlock: 10.0.2.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: Replica Subnet (AZ2)
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: Public Route Table
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  SubnetMasterRouteTableAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1
+  SubnetReplicaRouteTableAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: DBSubnetGroup for RDS instances
+      SubnetIds:
+        - Ref: PublicSubnet1
+        - Ref: PublicSubnet2
+  APIGatewaySecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow http to client host
+      VpcId:
+        Ref: VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+  VpcDefaultSecurityGroupIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !GetAtt VPC.DefaultSecurityGroup
+      CidrIp: 0.0.0.0/0
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+  MasterInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: 'serverless'
+      DBName: ${self:custom.config.DB_NAME}
+      AllocatedStorage: 20
+      DBInstanceClass: 'db.t3.medium'
+      StorageType: 'gp2'
+      Engine: 'postgres'
+      EngineVersion: '11.12'
+      AvailabilityZone: 'us-east-1a'
+      MasterUsername: ${self:custom.config.DB_USERNAME}
+      MasterUserPassword: ${self:custom.config.DB_PASSWORD}
+      PubliclyAccessible: True
+      Tags:
+        - Key: Project
+          Value: "RDS PostgreSQL"
+      VPCSecurityGroups:
+        - !GetAtt VPC.DefaultSecurityGroup
+      DBSubnetGroupName:
+        Ref: DBSubnetGroup
+  KMSKeyDBProxy:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: Symmetric KMS for DBProxy
+      EnableKeyRotation: false
+      KeyPolicy:
+        Version: '2012-10-17'
+        Id: key-rds-db-proxy
+        Statement:
+          - Effect: Allow
+            Action: kms:*
+            Resource: "*"
+            Principal:
+              AWS: !Join [ "", [ "arn:aws:iam::", !Ref "AWS::AccountId", ":root" ] ]
+  ProxySecretValues:
+    Type: 'AWS::SecretsManager::Secret'
+    Properties:
+      Name: proxy-secrets
+      KmsKeyId: !GetAtt KMSKeyDBProxy.Arn
+      SecretString:
+        Fn::Join: [ '', [ '{"username":"${self:custom.config.DB_USERNAME}","password":"${self:custom.config.DB_PASSWORD}", "engine": "postgres", "host": "',
+                          !GetAtt MasterInstance.Endpoint.Address,
+                          '", "port": "',
+                          !GetAtt MasterInstance.Endpoint.Port,
+                          '", "dbInstanceIdentifier":"serverless"}'
+        ] ]
+  RDSProxyPolicy:
+    Type: "AWS::IAM::ManagedPolicy"
+    Properties:
+      ManagedPolicyName: db-proxy-policy
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: VisualEditor0
+            Effect: Allow
+            Action: secretsmanager:GetSecretValue
+            Resource:
+              - Ref: ProxySecretValues
+          - Sid: VisualEditor1
+            Effect: Allow
+            Action: kms:Decrypt
+            Resource: !GetAtt KMSKeyDBProxy.Arn
+            Condition:
+              StringEquals:
+                kms:ViaService: secretsmanager.us-east-1.amazonaws.com
+  RDSProxyRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Sid: ''
+            Principal:
+              Service:
+                - rds.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Path: /
+      RoleName: db-proxy-role
+      ManagedPolicyArns:
+        - Ref: RDSProxyPolicy
+  DBProxy:
+    Type: AWS::RDS::DBProxy
+    Properties:
+      DebugLogging: true
+      DBProxyName: serverless-postgres-proxy
+      EngineFamily: POSTGRESQL
+      IdleClientTimeout: 120
+      RequireTLS: true
+      RoleArn: !GetAtt RDSProxyRole.Arn
+      Auth:
+        - { AuthScheme: SECRETS, SecretArn: !Ref ProxySecretValues, IAMAuth: DISABLED }
+      VpcSubnetIds:
+        - Ref: PublicSubnet1
+        - Ref: PublicSubnet2
+      VpcSecurityGroupIds:
+        - !GetAtt VPC.DefaultSecurityGroup
+  ProxyTargetGroup:
+    Type: AWS::RDS::DBProxyTargetGroup
+    Properties:
+      DBProxyName: !Ref DBProxy
+      DBInstanceIdentifiers: [ 'serverless' ]
+      TargetGroupName: default
+      ConnectionPoolConfigurationInfo:
+        MaxConnectionsPercent: 100
+        MaxIdleConnectionsPercent: 50
+        ConnectionBorrowTimeout: 120
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: cognito-user-pool-${opt:stage, self:provider.stage}
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: cognito-user-pool-client-${opt:stage, self:provider.stage}
+      AllowedOAuthFlows:
+        - implicit
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthScopes:
+        - phone
+        - email
+        - openid
+        - profile
+        - aws.cognito.signin.user.admin
+      UserPoolId:
+        Ref: CognitoUserPool
+      CallbackURLs:
+        - https://localhost:3000
+        - https://oauth.pstmn.io/v1/callback
+        - !Join [ "", [ "https://", !Ref "ApiGatewayRestApi", ".execute-api.", !Ref "AWS::Region", ".us-east-1.amazonaws.com/dev/auth/callback" ] ]
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      GenerateSecret: false
+      SupportedIdentityProviders:
+        - COGNITO
+  CognitoUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      UserPoolId:
+        Ref: CognitoUserPool
+      Domain: service-user-pool-domain-${opt:stage, self:provider.stage}-${self:provider.environment.AUTH_SUFFIX}
+Outputs:
+  EndpointMaster:
+    Description: "Endpoint of the newly created RDS PostgreSQL master"
+    Value: !GetAtt DBProxy.Endpoint
+  PortDB:
+    Description: "Port of the newly created RDS PostgreSQL master"
+    Value: !GetAtt MasterInstance.Endpoint.Port

@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "title": "AddExchangeUser",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "countryId": {
+      "type": "string"
+    },
+    "email": {
+      "type": "string"
+    },
+    "appURL": {
+      "type": "string"
+    },
+    "password": {
+      "type": "string"
+    },
+    "address": {
+      "type": "null"
+    },
+    "bankAccount": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "trn": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "trn"
+      ]
+    },
+    "terms": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "name",
+    "countryId",
+    "email",
+    "appURL",
+    "password",
+    "bankAccount",
+    "terms"
+  ]
+}

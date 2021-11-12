@@ -1,0 +1,42 @@
+users-create:
+  handler: ./controllers/users.create
+  timeout: 30
+  vpc: ${self:custom.vpc}
+  events:
+    - http:
+        path: users
+        method: post
+        cors: true
+        request:
+          schemas:
+            application/json: ${file(./schemas/addExchangeUser.json)}
+
+users-login:
+  handler: ./controllers/users.login
+  timeout: 30
+  vpc: ${self:custom.vpc}
+  events:
+    - http:
+        path: users/login
+        method: post
+        cors: true
+        request:
+          schemas:
+            application/json: ${file(./schemas/login.json)}
+
+users-countries:
+  handler: ./controllers/users.countries
+  timeout: 30
+  vpc: ${self:custom.vpc}
+  events:
+    - http:
+        path: users/countries
+        authorizer:
+          name: MyAuthorizer
+          type: COGNITO_USER_POOLS
+          arn:
+            Fn::GetAtt:
+              - CognitoUserPool
+              - Arn
+        method: get
+        cors: true

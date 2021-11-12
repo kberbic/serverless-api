@@ -1,0 +1,40 @@
+{
+  "dependencies": {
+    "aws-sdk": "^2.971.0",
+    "bcrypt-nodejs": "^0.0.3",
+    "date-fns": "^2.23.0",
+    "jsonwebtoken": "^8.5.1",
+    "luxon": "^1.28.0",
+    "pg": "^8.7.1",
+    "pg-hstore": "^2.3.4",
+    "sequelize": "^6.6.5",
+    "socksjs": "^0.5.0",
+    "umzug": "^3.0.0-beta.16",
+    "winston": "^3.2.1"
+  },
+  "name": "serverless-api",
+  "version": "1.0.0",
+  "main": "handler.js",
+  "devDependencies": {
+    "serverless-cloudside-plugin": "^1.0.4",
+    "serverless-layers": "^2.5.1",
+    "serverless-offline": "^8.0.0",
+    "serverless-sequelize-migrations": "^1.1.1"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "sls offline start --stage local",
+    "migrate:create": "sls migrations create --stage local --name",
+    "migrate:up": "sls invoke -f migrate-up -l",
+    "migrate:down": "sls invoke -f migrate-down -l",
+    "deploy:dev": "sls deploy --stage dev -v && npm run migrate:up -- --stage dev",
+    "deploy:qa": "sls deploy --stage qa -v && npm run migrate:up -- --stage qa",
+    "deploy:prod": "sls deploy --stage prod -v && npm run migrate:up -- --stage prod",
+
+    "remove:dev": "sls remove --stage dev -v"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": ""
+}

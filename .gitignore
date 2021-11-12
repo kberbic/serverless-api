@@ -1,0 +1,21 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/build
+/dist
+# misc
+.idea
+.DS_Store
+module.iml
+
+.env*
+src/.env*
+src/routes
+
+npm-debug.log*
+
+/src/tests/coverage
+coverage
+
+.serverless

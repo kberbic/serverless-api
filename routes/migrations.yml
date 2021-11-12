@@ -1,0 +1,8 @@
+migrate-up:
+  handler: ./controllers/migrations.up
+  timeout: 30
+  vpc: ${self:custom.vpc}
+migrate-down:
+  handler: ./controllers/migrations.down
+  timeout: 30
+  vpc: ${self:custom.vpc}

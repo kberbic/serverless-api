@@ -1,0 +1,62 @@
+# Welcome to Serverless!
+#
+# This file is the main config file for your service.
+# It's very minimal at this point and uses default values.
+# You can always add more config options for more control.
+# We've included some commented out config examples here.
+# Just uncomment any of them to get that config option.
+#
+# For full config options, check the docs:
+#    docs.serverless.com
+#
+# Happy Coding!
+
+variablesResolutionMode: 20210326
+service: serverless-api
+# app and org for use with dashboard.serverless.com
+#app: your-app-name
+#org: your-org-name
+
+custom:
+  migrationsPath: './migrations'
+  local: ${file(local.yml)}
+  config:
+    DB_DIALECT: 'postgres'
+    DB_NAME: ${ssm:DATABASE_NAME, ''}
+    DB_USERNAME: ${ssm:DATABASE_USERNAME, ''}
+    DB_PASSWORD: ${ssm:DATABASE_PASSWORD, ''}
+    DB_PORT: !GetAtt MasterInstance.Endpoint.Port
+    DB_HOST: !GetAtt MasterInstance.Endpoint.Address
+    DB_HOST_PROXY: !GetAtt DBProxy.Endpoint
+    DB_READ_ONLY_HOST: !GetAtt MasterInstance.Endpoint.Address
+    DB_READ_ONLY_HOST_PROXY: !GetAtt DBProxy.Endpoint
+    AUTH_SUFFIX: 'develop'
+  vpc:
+    securityGroupIds:
+      - !Ref APIGatewaySecurityGroup
+    subnetIds:
+      - !Ref PublicSubnet1
+      - !Ref PublicSubnet2
+
+# You can pin your service to only deploy with a specific Serverless version
+# Check out our docs for more details
+frameworkVersion: '2'
+
+provider:
+  name: aws
+  runtime: nodejs12.x
+  lambdaHashingVersion: 20201221
+  environment: ${self:custom.${opt:stage}, self:custom.config}
+
+plugins:
+  - serverless-offline
+  - serverless-sequelize-migrations
+  - serverless-cloudside-plugin
+
+functions:
+  - ${file(./routes/users.yml)}
+  - ${file(./routes/migrations.yml)}
+
+resources:
+  - ${file(./infrastructure/aws.yml)}
+
