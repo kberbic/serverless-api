@@ -1,6 +1,6 @@
-# Serverless Examples (AWS, PostgreSQL, Sequelize, Migration, Serverless)
+# Serverless example (AWS, PostgreSQL, Sequelize, Migration, Serverless)
 
-Your project is ready for deployment on AWS in 10 minutes without any DevOps knowledge
+Your project is ready for deployment on AWS in 10 minutes without any DevOps knowledge. Run and deploy in one click
 
 ## This example includes next AWS resources
 - VPC (Network)
