@@ -6,7 +6,6 @@ class Database {
     #models = {};
 
     constructor(name, username, password, host, readOnlyHosts, ssl) {
-        console.log(name, username)
         this.#sequelize = new Sequelize(name,  username, password, {
             dialect: 'postgres',
             port: 5432,
@@ -57,6 +56,11 @@ class Database {
         });
 
         return this;
+    }
+
+    json(item){
+        if(!item || !item.get) return item;
+        return item.get({plain: true});
     }
 }
 

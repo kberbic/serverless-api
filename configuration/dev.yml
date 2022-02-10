@@ -1,0 +1,9 @@
+DB_DIALECT: 'postgres'
+DB_NAME: ${ssm:DATABASE_NAME, 'serverless'}
+DB_USERNAME: !Sub "{{resolve:secretsmanager:${DatabasePassword}::username}}"
+DB_PASSWORD: !Sub "{{resolve:secretsmanager:${DatabasePassword}::password}}"
+DB_PORT: !GetAtt MasterInstance.Endpoint.Port
+DB_HOST: !GetAtt MasterInstance.Endpoint.Address
+DB_HOST_PROXY: !GetAtt DBProxy.Endpoint
+DB_READ_ONLY_HOST: !GetAtt MasterInstance.Endpoint.Address
+DB_READ_ONLY_HOST_PROXY: !GetAtt DBProxy.Endpoint

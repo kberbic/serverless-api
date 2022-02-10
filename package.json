@@ -1,9 +1,7 @@
 {
   "dependencies": {
     "aws-sdk": "^2.971.0",
-    "bcrypt-nodejs": "^0.0.3",
     "date-fns": "^2.23.0",
-    "jsonwebtoken": "^8.5.1",
     "luxon": "^1.28.0",
     "pg": "^8.7.1",
     "pg-hstore": "^2.3.4",
@@ -22,19 +20,20 @@
     "serverless-sequelize-migrations": "^1.1.1"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "start": "sls offline start --stage local",
-    "migrate:create": "sls migrations create --stage local --name",
-    "migrate:up": "sls invoke -f migrate-up -l",
-    "migrate:down": "sls invoke -f migrate-down -l",
-    "deploy:dev": "sls deploy --stage dev -v && npm run migrate:up -- --stage dev",
-    "deploy:qa": "sls deploy --stage qa -v && npm run migrate:up -- --stage qa",
-    "deploy:prod": "sls deploy --stage prod -v && npm run migrate:up -- --stage prod",
+    "migrate:local:up": "sls invoke local --function migrate-up -d {}",
+    "migrate:local:down": "sls invoke local --function migrate-down -d {}",
 
+    "migrate:create": "sls migrations create --stage local --name",
+    "migrate:dev:up": "sls invoke -f migrate-up -l",
+    "migrate:dev:down": "sls invoke -f migrate-down -l",
+    "deploy:dev": "sls deploy --stage dev -v && npm run migrate:dev:up -- --stage dev",
     "remove:dev": "sls remove --stage dev -v"
   },
   "keywords": [],
-  "author": "",
+  "author": "Kenan Berbic",
   "license": "ISC",
-  "description": ""
+  "description": "Serverless boilerplate"
 }
+
+

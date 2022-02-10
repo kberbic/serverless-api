@@ -13,24 +13,14 @@
 
 variablesResolutionMode: 20210326
 service: serverless-api
+
 # app and org for use with dashboard.serverless.com
 #app: your-app-name
 #org: your-org-name
 
 custom:
   migrationsPath: './migrations'
-  local: ${file(local.yml)}
-  config:
-    DB_DIALECT: 'postgres'
-    DB_NAME: ${ssm:DATABASE_NAME, ''}
-    DB_USERNAME: ${ssm:DATABASE_USERNAME, ''}
-    DB_PASSWORD: ${ssm:DATABASE_PASSWORD, ''}
-    DB_PORT: !GetAtt MasterInstance.Endpoint.Port
-    DB_HOST: !GetAtt MasterInstance.Endpoint.Address
-    DB_HOST_PROXY: !GetAtt DBProxy.Endpoint
-    DB_READ_ONLY_HOST: !GetAtt MasterInstance.Endpoint.Address
-    DB_READ_ONLY_HOST_PROXY: !GetAtt DBProxy.Endpoint
-    AUTH_SUFFIX: 'develop'
+  config: ${file(./configuration/${opt:stage, 'local'}.yml)}
   vpc:
     securityGroupIds:
       - !Ref APIGatewaySecurityGroup
@@ -44,9 +34,11 @@ frameworkVersion: '2'
 
 provider:
   name: aws
-  runtime: nodejs12.x
+  stage: ${opt:stage, 'local'}
+  region: ${opt:region, 'us-east-1'}
+  runtime: nodejs14.x
   lambdaHashingVersion: 20201221
-  environment: ${self:custom.${opt:stage}, self:custom.config}
+  environment: ${self:custom.config}
 
 plugins:
   - serverless-offline
@@ -55,6 +47,7 @@ plugins:
 
 functions:
   - ${file(./routes/users.yml)}
+  - ${file(./routes/countries.yml)}
   - ${file(./routes/migrations.yml)}
 
 resources:

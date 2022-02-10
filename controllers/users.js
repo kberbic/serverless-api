@@ -1,63 +1,39 @@
+
 const ServerRest = require('../utils/rest.utils');
-const logger = require("../utils/logger.utils");
-
 const {BedRequestError} = require('../errors/badrequest.error');
-const {ForbiddenError} = require('../errors/forbidden.error');
-
-
+const { NoContentError } = require('../errors/noContent.error');
 const db = require('../db');
 
 class UserController{
-    async create(event) {
-        const {input: user} = event;
+    async updateInfo(event) {
+        const {input: info, requestContext: {authorizer}} = event;
+        const {UserInfo, Country, Currency} = await db.connect();
 
-        const {User, Token, Country, Notification, Card} = await db.connect();
+        const country = await Country.findOne({where: {id: info.countryId}})
+        if(!country) throw new BedRequestError("COUNTRY_DOES_NOT_EXIST");
 
-        const count = await User.count({where: {email: user.email}});
-        if (count)
-            throw new BedRequestError("Email already exist");
+        const currency = info.currencyId ? await Currency.findOne({where: {id: info.currencyId}}): null;
+        if(info.currencyId && !currency) throw new BedRequestError("CURRENCY_DOES_NOT_EXIST");
+        
+        let userInfo = await UserInfo.findOne({where: {id: authorizer.claims.sub}}).then(db.json);
 
-        const countryCount = await Country.count({where: {id: user.countryId}});
-        if (!countryCount)
-            throw new BedRequestError("Country does not exist");
+        if(!userInfo)
+            userInfo = await UserInfo.create({id: authorizer.claims.sub, ...info}).then(db.json);
+        else
+            await UserInfo.update(info, { where: { id: authorizer.claims.sub }}).then(db.json);
 
-        user.password = User.generateHash(user.password);
-        const transaction = await db.transaction();
-        await User.create(user, {transaction})
-            .then((dbUser) => Token.generateToken(0, dbUser.id, {transaction})
-                .then(token => Notification.sendVerificationEmail(dbUser, token, user.appURL, {transaction})))
-            .then((not) => Card.create({userId: not.userId, ...user.bankAccount}, {transaction}))
-            .then(() => transaction.commit())
-            .catch(async (ex) => {
-                await transaction.rollback();
-                throw ex;
-            });
-
-        return {success: true};
+        return {id: authorizer.claims.sub};
     }
 
-    async login(event) {
-        const {input: login} = event;
+    async getInfo(event) {
+        const {requestContext: {authorizer}} = event;
+        const {UserInfo} = await db.connect();
 
-        const {User} = await db.connect();
-        const user = await User.findOne({where: {email: login.email}});
-        if (!user)
-            throw new ForbiddenError("IncorrectEmailOrPassword");
+        let userInfo = await UserInfo.findOne({where: {id: authorizer.claims.sub}}).then(db.json);
 
-        if (!user.validPassword(login.password))
-            throw new ForbiddenError("IncorrectEmailOrPassword");
-
-        res.set('Authorization', `Bearer ${user.getJWT()}`);
-        return {success: true};
-    }
-
-    async countries(event) {
-        const {input: login} = event;
-
-        const {Country} = await db.connect();
-        return await Country
-            .findAll()
-            .then((items) => items.map(({id, name}) => ({id, name})));
+        if(!userInfo) throw new NoContentError("USER_INFO_DOES_NOT_CREATED_YET");
+       
+        return {id: userInfo.id, address: userInfo.address, postalCode: userInfo.postalCode, countryId: userInfo.countryId};
     }
 }
 

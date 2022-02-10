@@ -1,11 +1,11 @@
-users-update-info:
-  handler: ./controllers/users.updateInfo
+countries-get-all:
+  handler: ./controllers/countries.getAll
   timeout: 30
   vpc: ${self:custom.vpc}
   events:
     - http:
-        path: users/info
-        method: post
+        path: countries/all
+        method: get
         authorizer:
           name: MyAuthorizer
           type: COGNITO_USER_POOLS
@@ -14,17 +14,14 @@ users-update-info:
               - CognitoUserPool
               - Arn
         cors: true
-        request:
-          schemas:
-            application/json: ${file(./schemas/userInfo.json)}
 
-users-get-info:
-  handler: ./controllers/users.getInfo
+countries-get-one:
+  handler: ./controllers/countries.getOne
   timeout: 30
   vpc: ${self:custom.vpc}
   events:
     - http:
-        path: users/info
+        path: countries/{id}
         method: get
         authorizer:
           name: MyAuthorizer

@@ -62,7 +62,7 @@ Resources:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
       RouteTableId: !Ref PublicRouteTable
-      SubnetId: !Ref PublicSubnet1
+      SubnetId: !Ref PublicSubnet2
   DBSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
     Properties:
@@ -93,28 +93,7 @@ Resources:
       IpProtocol: tcp
       FromPort: 5432
       ToPort: 5432
-  MasterInstance:
-    Type: AWS::RDS::DBInstance
-    Properties:
-      DBInstanceIdentifier: 'serverless'
-      DBName: ${self:custom.config.DB_NAME}
-      AllocatedStorage: 20
-      DBInstanceClass: 'db.t3.medium'
-      StorageType: 'gp2'
-      Engine: 'postgres'
-      EngineVersion: '11.12'
-      AvailabilityZone: 'us-east-1a'
-      MasterUsername: ${self:custom.config.DB_USERNAME}
-      MasterUserPassword: ${self:custom.config.DB_PASSWORD}
-      PubliclyAccessible: True
-      Tags:
-        - Key: Project
-          Value: "RDS PostgreSQL"
-      VPCSecurityGroups:
-        - !GetAtt VPC.DefaultSecurityGroup
-      DBSubnetGroupName:
-        Ref: DBSubnetGroup
-  KMSKeyDBProxy:
+  KMSKey:
     Type: AWS::KMS::Key
     Properties:
       Description: Symmetric KMS for DBProxy
@@ -128,17 +107,57 @@ Resources:
             Resource: "*"
             Principal:
               AWS: !Join [ "", [ "arn:aws:iam::", !Ref "AWS::AccountId", ":root" ] ]
+  DatabasePassword:
+    Type: 'AWS::SecretsManager::Secret'
+    Properties:
+      Name: database-secrets
+      KmsKeyId: !GetAtt KMSKey.Arn
+      Description: "This secret has a dynamically generated secret password."
+      GenerateSecretString:
+        SecretStringTemplate: '{"username": "postgres"}'
+        GenerateStringKey: "password"
+        PasswordLength: 30
+        ExcludeCharacters: '"@/\'
+  MasterInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: 'serverless'
+      DBName: ${self:custom.config.DB_NAME}
+      AllocatedStorage: 20
+      DBInstanceClass: 'db.t3.medium'
+      StorageType: 'gp2'
+      Engine: 'postgres'
+      EngineVersion: '11.12'
+      AvailabilityZone: "${self:provider.region}a"
+      "MasterUsername": {
+        "Fn::Sub": "{{resolve:secretsmanager:${DatabasePassword}::username}}"
+      }
+      "MasterUserPassword": {
+        "Fn::Sub": "{{resolve:secretsmanager:${DatabasePassword}::password}}"
+      }
+      PubliclyAccessible: True
+      Tags:
+        - Key: Project
+          Value: "RDS PostgreSQL"
+      VPCSecurityGroups:
+        - !GetAtt VPC.DefaultSecurityGroup
+      DBSubnetGroupName:
+        Ref: DBSubnetGroup
   ProxySecretValues:
     Type: 'AWS::SecretsManager::Secret'
     Properties:
       Name: proxy-secrets
-      KmsKeyId: !GetAtt KMSKeyDBProxy.Arn
+      KmsKeyId: !GetAtt KMSKey.Arn
       SecretString:
-        Fn::Join: [ '', [ '{"username":"${self:custom.config.DB_USERNAME}","password":"${self:custom.config.DB_PASSWORD}", "engine": "postgres", "host": "',
+        Fn::Join: [ '', [ '{"username": "',
+                          !Sub "{{resolve:secretsmanager:${DatabasePassword}::username}}",
+                          '", "password": "',
+                          !Sub "{{resolve:secretsmanager:${DatabasePassword}::password}}",
+                          '", "engine": "postgres", "host": "',
                           !GetAtt MasterInstance.Endpoint.Address,
                           '", "port": "',
                           !GetAtt MasterInstance.Endpoint.Port,
-                          '", "dbInstanceIdentifier":"serverless"}'
+                          '", "dbInstanceIdentifier":"${self:custom.config.DB_NAME}"}'
         ] ]
   RDSProxyPolicy:
     Type: "AWS::IAM::ManagedPolicy"
@@ -155,7 +174,7 @@ Resources:
           - Sid: VisualEditor1
             Effect: Allow
             Action: kms:Decrypt
-            Resource: !GetAtt KMSKeyDBProxy.Arn
+            Resource: !GetAtt KMSKey.Arn
             Condition:
               StringEquals:
                 kms:ViaService: secretsmanager.us-east-1.amazonaws.com
@@ -204,7 +223,7 @@ Resources:
   CognitoUserPool:
     Type: AWS::Cognito::UserPool
     Properties:
-      UserPoolName: cognito-user-pool-${opt:stage, self:provider.stage}
+      UserPoolName: cognito-user-pool-${self:provider.stage}
       UsernameAttributes:
         - email
       AutoVerifiedAttributes:
@@ -212,9 +231,9 @@ Resources:
   CognitoUserPoolClient:
     Type: AWS::Cognito::UserPoolClient
     Properties:
-      ClientName: cognito-user-pool-client-${opt:stage, self:provider.stage}
+      ClientName: cognito-user-pool-client-${self:provider.stage}
       AllowedOAuthFlows:
-        - implicit
+        - code
       AllowedOAuthFlowsUserPoolClient: true
       AllowedOAuthScopes:
         - phone
@@ -226,7 +245,6 @@ Resources:
         Ref: CognitoUserPool
       CallbackURLs:
         - https://localhost:3000
-        - https://oauth.pstmn.io/v1/callback
         - !Join [ "", [ "https://", !Ref "ApiGatewayRestApi", ".execute-api.", !Ref "AWS::Region", ".us-east-1.amazonaws.com/dev/auth/callback" ] ]
       ExplicitAuthFlows:
         - ALLOW_USER_SRP_AUTH
@@ -239,7 +257,7 @@ Resources:
     Properties:
       UserPoolId:
         Ref: CognitoUserPool
-      Domain: service-user-pool-domain-${opt:stage, self:provider.stage}-${self:provider.environment.AUTH_SUFFIX}
+      Domain: serverless-example-domain-${self:provider.stage}
 Outputs:
   EndpointMaster:
     Description: "Endpoint of the newly created RDS PostgreSQL master"
@@ -247,3 +265,15 @@ Outputs:
   PortDB:
     Description: "Port of the newly created RDS PostgreSQL master"
     Value: !GetAtt MasterInstance.Endpoint.Port
+  CognitoClientId:
+    Description: "Cognito Client ID"
+    Value: !Ref CognitoUserPoolClient
+  CognitoDomain:
+    Description: "Cognito Domain"
+    Value: !Ref CognitoUserPoolDomain
+  CognitoLoginURL:
+    Description: "Cognito login url"
+    Value: !Join [ "", [ "https://", !Ref "CognitoUserPoolDomain", ".auth.", !Ref "AWS::Region", ".amazoncognito.com/login?client_id=", !Ref "CognitoUserPoolClient", "&response_type=code&scope=openid&redirect_uri=", "https://", !Ref "ApiGatewayRestApi", ".execute-api.", !Ref "AWS::Region", ".us-east-1.amazonaws.com/dev/auth/callback" ] ]
+  CognitoGetTokenURL:
+    Description: "Cognito login url"
+    Value: !Join [ "", [ "https://", !Ref "CognitoUserPoolDomain", ".auth.", !Ref "AWS::Region", ".amazoncognito.com/oauth2/token"] ]

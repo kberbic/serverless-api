@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "title": "UserInfo",
+  "type": "object",
+  "properties": {
+    "address": {
+      "type": "string"
+    },
+    "postalCode": {
+      "type": "number"
+    },
+    "terms": {
+      "type": "boolean"
+    },
+    "countryId": {
+      "type": "string"
+    },
+    "currencyId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "address",
+    "postalCode",
+    "terms",
+    "countryId"
+  ]
+}
